@@ -19,7 +19,6 @@ import java.util.List;
 
 public class RMIApp extends JFrame {
     private RMIPeer peer;
-    private PeerInterface stub;
     private Registry registry;
     private JTextArea textAreaSearchResults;
     private JTextArea jTextAreaMessages; // Componente para mostrar mensajes
@@ -134,9 +133,8 @@ public class RMIApp extends JFrame {
         // Iniciar el registro RMI
         try {
             registry = LocateRegistry.createRegistry(1099);
-            peer = new RMIPeer(nodeID, 1, this); // Asumiendo un ID de 1 para este ejemplo
-            stub = (PeerInterface) UnicastRemoteObject.exportObject(peer, 0);
-            registry.rebind(nodeID, stub);
+            peer = new RMIPeer(nodeID, 1, this);
+            registry.rebind(nodeID, peer);
             updatePeersList();
             
             // Obtener la referencia a la tabla de archivos compartidos del peer
