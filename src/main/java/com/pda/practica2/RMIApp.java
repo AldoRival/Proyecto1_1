@@ -16,6 +16,7 @@ import java.rmi.registry.Registry;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Arrays;
 import java.util.List;
+import javax.swing.table.DefaultTableModel;
 
 public class RMIApp extends JFrame {
     private RMIPeer peer;
@@ -32,6 +33,11 @@ public class RMIApp extends JFrame {
     private JPanel coordinatorPanel; // Panel para mostrar la tabla del coordinador
     private JScrollPane sharedFilesScrollPane; // ScrollPane para la tabla del coordinador
     private boolean isCoordinator = false; // Indica si este peer es el coordinador
+    private JTable resultsTable;
+    
+    
+    
+    
 
     public RMIApp(String nodeID) throws RemoteException {
         super("Intercambio de Archivos P2P");
@@ -72,7 +78,7 @@ public class RMIApp extends JFrame {
         JScrollPane scrollPaneSearchResults = new JScrollPane(textAreaSearchResults);
         
         // Agregar botón de descarga para los resultados de búsqueda
-        JButton downloadSelectedButton = new JButton("Descargar seleccionado");
+        JButton downloadSelectedButton = new JButton("Descargar seleccionados");
         downloadSelectedButton.addActionListener(e -> downloadSelectedFile());
         
         resultsPanel.add(scrollPaneSearchResults, BorderLayout.CENTER);
@@ -136,6 +142,7 @@ public class RMIApp extends JFrame {
             peer = new RMIPeer(nodeID, 1, this);
             registry.rebind(nodeID, peer);
             updatePeersList();
+            updateCatalogs();
             
             // Obtener la referencia a la tabla de archivos compartidos del peer
             sharedFilesScrollPane = peer.getSharedFilesScrollPane();
@@ -145,6 +152,12 @@ public class RMIApp extends JFrame {
             JOptionPane.showMessageDialog(this, "Error al iniciar el servicio RMI: " + ex.getMessage(), 
                                          "Error", JOptionPane.ERROR_MESSAGE);
         }
+        
+        if (peer.getSharedFilesScrollPane() != null) {
+        sharedFilesScrollPane = peer.getSharedFilesScrollPane();
+        coordinatorPanel.add(sharedFilesScrollPane, BorderLayout.CENTER);
+}
+        
     }
 
     public Registry getRegistry() {
@@ -163,37 +176,46 @@ public class RMIApp extends JFrame {
         return textAreaSearchResults; // Asumiendo que los peers se muestran aquí
     }
 
-    private void downloadSelectedFile() {
-        // Obtener la línea seleccionada en el área de resultados
-        String selectedText = textAreaSearchResults.getSelectedText();
-        if (selectedText == null || selectedText.trim().isEmpty()) {
-            JOptionPane.showMessageDialog(this, "Por favor, selecciona un archivo para descargar", 
-                                         "Selección requerida", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-        
-        // Extraer el nombre del archivo y el peer que lo tiene
-        String[] parts = selectedText.split("\\|");
-        if (parts.length < 3) {
-            JOptionPane.showMessageDialog(this, "Formato de selección incorrecto. Selecciona una línea completa", 
-                                         "Error de formato", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-        
-        String fileName = parts[0].trim();
-        String peerName = parts[2].trim();
-        
-        try {
-            // Llamar al método de descarga del peer
-            peer.downloadFile(fileName, peerName);
-            JOptionPane.showMessageDialog(this, "Descarga iniciada: " + fileName + " desde " + peerName, 
-                                         "Descarga iniciada", JOptionPane.INFORMATION_MESSAGE);
-        } catch (RemoteException ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Error al iniciar la descarga: " + ex.getMessage(), 
-                                         "Error", JOptionPane.ERROR_MESSAGE);
+// Replace the downloadSelectedFile method in RMIApp.java
+private void downloadSelectedFile() {
+    if (resultsTable == null) {
+        JOptionPane.showMessageDialog(this, 
+            "No hay resultados de búsqueda disponibles", 
+            "Error", JOptionPane.WARNING_MESSAGE);
+        return;
+    }
+    
+    DefaultTableModel model = (DefaultTableModel) resultsTable.getModel();
+    boolean fileSelected = false;
+    
+    for (int i = 0; i < model.getRowCount(); i++) {
+        Boolean selected = (Boolean) model.getValueAt(i, 0);
+        if (selected) {
+            fileSelected = true;
+            String fileName = (String) model.getValueAt(i, 1);
+            String peerName = (String) model.getValueAt(i, 3);
+            
+            try {
+                // Llamar al método de descarga del peer
+                peer.downloadFile(fileName, peerName);
+                JOptionPane.showMessageDialog(this, 
+                    "Descarga iniciada: " + fileName + " desde " + peerName, 
+                    "Descarga iniciada", JOptionPane.INFORMATION_MESSAGE);
+            } catch (RemoteException ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(this, 
+                    "Error al iniciar la descarga: " + ex.getMessage(), 
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            }
         }
     }
+    
+    if (!fileSelected) {
+        JOptionPane.showMessageDialog(this, 
+            "Por favor, selecciona al menos un archivo para descargar", 
+            "Selección requerida", JOptionPane.WARNING_MESSAGE);
+    }
+}
 
     private void uploadFile() {
         JFileChooser fileChooser = new JFileChooser();
@@ -215,11 +237,9 @@ public class RMIApp extends JFrame {
                 boolean success = peer.saveFileToStorage(file);
                 
                 if (success) {
-                    JOptionPane.showMessageDialog(this, 
-                        "Archivo subido correctamente: " + file.getName(), 
-                        "Éxito", 
-                        JOptionPane.INFORMATION_MESSAGE);
-                    updateCatalogs();
+                JOptionPane.showMessageDialog(this, 
+                "Archivo subido correctamente: " + file.getName(), "Éxito",  JOptionPane.INFORMATION_MESSAGE);
+                updateCatalogs();  // Update catalogs after successful upload
                 } else {
                     JOptionPane.showMessageDialog(this, 
                         "Error al subir el archivo", 
@@ -236,20 +256,37 @@ public class RMIApp extends JFrame {
         }
     }
 
-    private void updateCatalogs() {
-        try {
-            String[] mp3Files = peer.getCatalogs("mp3");
-            String[] mp4Files = peer.getCatalogs("mp4");
+// In RMIApp.java
+private void updateCatalogs() {
+    try {
+        // Get catalogs from the peer
+        String[] mp3Files = peer.getCatalogs("mp3");
+        String[] mp4Files = peer.getCatalogs("mp4");
+        
+        // Clear the text areas first
+        catalogMP3.setText("");
+        catalogMP4.setText("");
+        
+        // Add the files to the text areas
+        if (mp3Files.length > 0) {
             catalogMP3.setText(String.join("\n", mp3Files));
-            catalogMP4.setText(String.join("\n", mp4Files));
-        } catch (RemoteException e) {
-            e.printStackTrace();
-            JOptionPane.showMessageDialog(this, 
-                "Error al actualizar catálogos: " + e.getMessage(), 
-                "Error", 
-                JOptionPane.ERROR_MESSAGE);
         }
+        
+        if (mp4Files.length > 0) {
+            catalogMP4.setText(String.join("\n", mp4Files));
+        }
+        
+        // Log the update
+        System.out.println("Catálogos actualizados: " + mp3Files.length + " archivos MP3, " 
+                          + mp4Files.length + " archivos MP4");
+    } catch (RemoteException e) {
+        e.printStackTrace();
+        JOptionPane.showMessageDialog(this, 
+            "Error al actualizar catálogos: " + e.getMessage(), 
+            "Error", 
+            JOptionPane.ERROR_MESSAGE);
     }
+}
 
     private void updatePeersList() {
         try {
@@ -264,34 +301,81 @@ public class RMIApp extends JFrame {
         }
     }
 
-    public void searchFiles(String query) {
-        if (query == null || query.trim().isEmpty()) {
-            JOptionPane.showMessageDialog(this, 
-                "Por favor, ingresa un término de búsqueda", 
-                "Búsqueda vacía", 
-                JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-        
-        try {
-            String[] results = peer.searchFiles(query);
-            if (results.length > 0) {
-                StringBuilder sb = new StringBuilder("Resultados de búsqueda para '" + query + "':\n");
-                for (String result : results) {
-                    sb.append(result).append("\n");
-                }
-                textAreaSearchResults.setText(sb.toString());
-            } else {
-                textAreaSearchResults.setText("No se encontraron resultados para '" + query + "'");
-            }
-        } catch (RemoteException e) {
-            e.printStackTrace();
-            JOptionPane.showMessageDialog(this, 
-                "Error al buscar archivos: " + e.getMessage(), 
-                "Error", 
-                JOptionPane.ERROR_MESSAGE);
-        }
+// In RMIApp.java, modify the searchFiles method
+public void searchFiles(String query) {
+    if (query == null || query.trim().isEmpty()) {
+        JOptionPane.showMessageDialog(this,
+            "Por favor, ingresa un término de búsqueda",
+            "Búsqueda vacía",
+            JOptionPane.WARNING_MESSAGE);
+        return;
     }
+
+    try {
+        String[] resultsArray = peer.searchFiles(query);
+
+        // Crear un nuevo modelo de tabla para los resultados de búsqueda
+        DefaultTableModel model = new DefaultTableModel() {
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                return columnIndex == 0 ? Boolean.class : String.class;
+            }
+
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return column == 0; // Solo la columna de checkbox es editable
+            }
+        };
+
+        // Definir las columnas
+        model.addColumn("Seleccionar");
+        model.addColumn("Nombre");
+        model.addColumn("Tamaño");
+        model.addColumn("Subido por");
+        model.addColumn("Fecha");
+
+        // Añadir los resultados al modelo
+        for (String result : resultsArray) {
+            String[] parts = result.split("\\|");
+            if (parts.length >= 3) {
+                String fileName = parts[0].trim();
+                String fileSize = parts[1].trim();
+                String uploader = parts[2].trim();
+                String date = parts.length > 3 ? parts[3].trim() : "";
+
+                model.addRow(new Object[]{false, fileName, fileSize, uploader, date});
+            }
+        }
+
+        // Crear una nueva tabla y reemplazar el área de texto
+        resultsTable = new JTable(model);
+        resultsTable.getColumnModel().getColumn(0).setMaxWidth(80);
+        resultsTable.getColumnModel().getColumn(1).setPreferredWidth(200);
+        resultsTable.getColumnModel().getColumn(2).setPreferredWidth(80);
+        resultsTable.getColumnModel().getColumn(3).setPreferredWidth(100);
+        resultsTable.getColumnModel().getColumn(4).setPreferredWidth(150);
+
+        // Reemplazar el scrollPaneSearchResults en el panel resultsPanel
+        JScrollPane oldScrollPane = (JScrollPane) textAreaSearchResults.getParent().getParent();
+        JPanel parentPanel = (JPanel) oldScrollPane.getParent();
+        parentPanel.remove(oldScrollPane);
+        JScrollPane scrollPane = new JScrollPane(resultsTable);
+        parentPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Actualizar la referencia a la tabla de resultados
+        this.resultsTable = resultsTable;
+        parentPanel.revalidate();
+        parentPanel.repaint();
+
+    } catch (RemoteException e) {
+        e.printStackTrace();
+        JOptionPane.showMessageDialog(this,
+            "Error al buscar archivos: " + e.getMessage(),
+            "Error",
+            JOptionPane.ERROR_MESSAGE);
+    }
+}
+
 
     public void updateCoordinator(String coordinator) {
         jLabelCoor.setText("Coordinador: " + coordinator);
@@ -314,16 +398,22 @@ public class RMIApp extends JFrame {
     /**
      * Actualiza la tabla de archivos compartidos en el panel del coordinador
      */
-    private void refreshSharedFilesTable() {
-        if (isCoordinator && sharedFilesScrollPane != null) {
-            // Asegurarse de que el panel esté visible en el tab del coordinador
-            coordinatorPanel.removeAll();
-            coordinatorPanel.add(new JLabel("Archivos compartidos en la red (Coordinador)"), BorderLayout.NORTH);
-            coordinatorPanel.add(sharedFilesScrollPane, BorderLayout.CENTER);
-            coordinatorPanel.revalidate();
-            coordinatorPanel.repaint();
-        }
+private void refreshSharedFilesTable() {
+    if (isCoordinator && sharedFilesScrollPane != null) {
+        // Clear existing components
+        coordinatorPanel.removeAll();
+        
+        // Add the title label
+        coordinatorPanel.add(new JLabel("Archivos compartidos en la red (Coordinador)"), BorderLayout.NORTH);
+        
+        // Add the scroll pane containing the table
+        coordinatorPanel.add(sharedFilesScrollPane, BorderLayout.CENTER);
+        
+        // Request layout update
+        coordinatorPanel.revalidate();
+        coordinatorPanel.repaint();
     }
+}
     
     
 

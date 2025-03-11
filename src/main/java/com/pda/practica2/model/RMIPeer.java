@@ -71,29 +71,37 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
     // Lista de archivos compartidos
     private List<SharedFile> sharedFiles;
 
-    // Constructor público para permitir la creación de instancias desde otras clases
-    public RMIPeer(String name, int id, RMIApp app) throws RemoteException {
-        super();
-        this.name = name;
-        this.id = id;
-        this.catalog = new ArrayList<>();
-        this.coordinator = name; // Inicialmente, cada peer es su propio coordinador
-        this.electionInProgress = false;
-        this.foundGreater = false;
-        this.peers = new ArrayList<>();
-        this.app = app;
-        this.fileServerRunning = false;
-        this.sharedFiles = new ArrayList<>();
+   // In RMIPeer.java, update the constructor to call scanStorageDirectory
+public RMIPeer(String name, int id, RMIApp app) throws RemoteException {
+    super();
+    this.name = name;
+    this.id = id;
+    this.catalog = new ArrayList<>();
+    this.coordinator = name; // Inicialmente, cada peer es su propio coordinador
+    this.electionInProgress = false;
+    this.foundGreater = false;
+    this.peers = new ArrayList<>();
+    this.app = app;
+    this.fileServerRunning = false;
+    this.sharedFiles = new ArrayList<>();
 
-        // Inicializar la tabla de archivos compartidos
-        initSharedFilesTable();
+    // Inicializar la tabla de archivos compartidos
+    initSharedFilesTable();
 
-        // Asegurar que la carpeta 'storage' exista
-        ensureStorageDirectoryExists();
-        
-        // Iniciar el servidor de archivos
-        startFileServer();
-    }
+    // Asegurar que la carpeta 'storage' exista
+    ensureStorageDirectoryExists();
+    
+    // Escanear directorio de storage para registrar archivos existentes
+    scanStorageDirectory();
+    
+    // Iniciar el servidor de archivos
+    startFileServer();
+    
+    ensureStorageDirectoryExists();
+    
+    loadExistingFilesIntoCatalog();  // Load existing files into catalog
+    
+}
 
     private void initSharedFilesTable() {
         // Crear el modelo de tabla con las columnas necesarias
@@ -189,62 +197,82 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
     /**
      * Maneja la recepción de un archivo desde otro peer
      */
-    private void handleFileTransfer(Socket socket) {
-        try {
-            // Crear un buffer para leer el nombre del archivo
-            DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
-            
-            // Leer el nombre del archivo
-            String fileName = dataInputStream.readUTF();
-            System.out.println("Recibiendo archivo: " + fileName);
-            
-            // Crear el archivo en la carpeta storage
-            File storageDir = new File("storage");
-            File receivedFile = new File(storageDir, fileName);
-            
-            // Abrir un flujo para escribir en el archivo
-            FileOutputStream fileOutputStream = new FileOutputStream(receivedFile);
-            
+private void handleFileTransfer(Socket socket) {
+    DataInputStream dataInputStream = null;
+    FileOutputStream fileOutputStream = null;
+    
+    try {
+        // Create a buffer to read the file name
+        dataInputStream = new DataInputStream(socket.getInputStream());
+        
+        // Read the file name
+        String fileName = dataInputStream.readUTF();
+        System.out.println("Recibiendo archivo: " + fileName);
+        
+        // Create the file in the storage folder
+        File storageDir = new File("storage");
+        File receivedFile = new File(storageDir, fileName);
+        
+        // Open a stream to write to the file
+        fileOutputStream = new FileOutputStream(receivedFile);
+        
             // Crear un buffer para la transferencia
             byte[] buffer = new byte[8192]; // Buffer más grande para mejor rendimiento
-            int bytesRead;
-            long totalBytesRead = 0;
-            
+        int bytesRead;
+        long totalBytesRead = 0;
+        
             // Leer datos del socket y escribir en el archivo
-            while ((bytesRead = dataInputStream.read(buffer)) != -1) {
-                fileOutputStream.write(buffer, 0, bytesRead);
-                totalBytesRead += bytesRead;
+        while ((bytesRead = dataInputStream.read(buffer)) != -1) {
+            fileOutputStream.write(buffer, 0, bytesRead);
+            totalBytesRead += bytesRead;
                 System.out.println("Bytes recibidos: " + totalBytesRead);
             }
-            
+        
             // Cerrar los flujos
             fileOutputStream.close();
             dataInputStream.close();
             socket.close();
             
-            System.out.println("Archivo recibido con éxito: " + fileName + " (" + totalBytesRead + " bytes)");
-            
-            // Registrar el archivo en el catálogo
-            registerCatalog(fileName);
-            
-            // Crear un SharedFile para este archivo
-            SharedFile sharedFile = new SharedFile(fileName, receivedFile.length(), "Descargado");
-            
-            // Agregar a la lista de archivos compartidos
-            addSharedFile(sharedFile);
-            
-            // Actualizar la interfaz de usuario (debe hacerse en el hilo de EDT)
-            if (app != null) {
-                SwingUtilities.invokeLater(() -> {
-                    app.getjTextAreaMessages().append("Archivo recibido: " + fileName + "\n");
-                });
-            }
-            
+        System.out.println("Archivo recibido con éxito: " + fileName + " (" + totalBytesRead + " bytes)");
+        
+        // Register the file in the catalog
+        registerCatalog(fileName);
+        
+        // Create a SharedFile for this file
+        SharedFile sharedFile = new SharedFile(fileName, receivedFile.length(), "Descargado");
+        
+        // Add to the list of shared files
+        addSharedFile(sharedFile);
+        
+        // Update the user interface (must be done in the EDT thread)
+        if (app != null) {
+            SwingUtilities.invokeLater(() -> {
+                app.getjTextAreaMessages().append("Archivo recibido: " + fileName + "\n");
+            });
+        }
+        
+    } catch (IOException e) {
+        System.err.println("Error durante la recepción del archivo: " + e.getMessage());
+        e.printStackTrace();
+        
+        // Update UI with error message
+        if (app != null) {
+            final String errorMsg = e.getMessage();
+            SwingUtilities.invokeLater(() -> {
+                app.getjTextAreaMessages().append("Error al recibir archivo: " + errorMsg + "\n");
+            });
+        }
+    } finally {
+        // Close all resources
+        try {
+            if (fileOutputStream != null) fileOutputStream.close();
+            if (dataInputStream != null) dataInputStream.close();
+            if (socket != null && !socket.isClosed()) socket.close();
         } catch (IOException e) {
-            System.err.println("Error durante la recepción del archivo: " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Error al cerrar recursos: " + e.getMessage());
         }
     }
+}
 
     @Override
     public void message(String nodeID, String message) throws RemoteException {
@@ -258,40 +286,47 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
         System.out.println("Lista de peers actualizada: " + this.peers);
     }
 
-    @Override
-    public String[] searchFiles(String query) throws RemoteException {
-        // Si somos el coordinador, buscar en nuestra tabla de archivos compartidos
-        if (name.equals(coordinator)) {
+@Override
+public String[] searchFiles(String query) throws RemoteException {
+    System.out.println("Buscando archivos con query: '" + query + "'");
+    
+    // If we are the coordinator, search in our shared files table
+    if (name.equals(coordinator)) {
+        List<String> results = new ArrayList<>();
+        System.out.println("Buscando en " + sharedFiles.size() + " archivos compartidos");
+        
+        for (SharedFile file : sharedFiles) {
+            if (file.getFileName().toLowerCase().contains(query.toLowerCase())) {
+                results.add(file.getFileName() + " | " + 
+                           (file.getFileSize() / 1024) + " KB | " + 
+                           file.getUploadedBy() + " | " + 
+                           file.getUploadDate());
+            }
+        }
+        System.out.println("Encontrados " + results.size() + " resultados");
+        return results.toArray(new String[0]);
+    } else {
+        // If we are not the coordinator, search on the coordinator
+        try {
+            System.out.println("Buscando a través del coordinador: " + coordinator);
+            PeerInterface coordinatorPeer = (PeerInterface) app.getRegistry().lookup(coordinator);
+            return coordinatorPeer.searchFiles(query);
+        } catch (Exception e) {
+            System.err.println("Error al buscar archivos en el coordinador: " + e.getMessage());
+            e.printStackTrace();
+            
+            // Search in our local catalog as backup
+            System.out.println("Usando catálogo local como respaldo");
             List<String> results = new ArrayList<>();
-            for (SharedFile file : sharedFiles) {
-                if (file.getFileName().toLowerCase().contains(query.toLowerCase())) {
-                    results.add(file.getFileName() + " | " + 
-                                (file.getFileSize() / 1024) + " KB | " + 
-                                file.getUploadedBy() + " | " + 
-                                file.getUploadDate());
+            for (String file : catalog) {
+                if (file.toLowerCase().contains(query.toLowerCase())) {
+                    results.add(file + " | Local | " + name);
                 }
             }
             return results.toArray(new String[0]);
-        } else {
-            // Si no somos el coordinador, buscar en el coordinador
-            try {
-                PeerInterface coordinatorPeer = (PeerInterface) app.getRegistry().lookup(coordinator);
-                return coordinatorPeer.searchFiles(query);
-            } catch (Exception e) {
-                System.err.println("Error al buscar archivos en el coordinador: " + e.getMessage());
-                e.printStackTrace();
-                
-                // Buscar en nuestro catálogo local como respaldo
-                List<String> results = new ArrayList<>();
-                for (String file : catalog) {
-                    if (file.toLowerCase().contains(query.toLowerCase())) {
-                        results.add(file);
-                    }
-                }
-                return results.toArray(new String[0]);
-            }
         }
     }
+}
 
     @Override
     public void transferFile(String fileName, String nodeID) throws RemoteException {
@@ -414,33 +449,38 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
         return "127.0.0.1";
     }
 
-    @Override
-    public void registerCatalog(String catalogItem) throws RemoteException {
-        if (!catalog.contains(catalogItem)) {
-            catalog.add(catalogItem);
-            System.out.println("Archivo registrado en el catálogo: " + catalogItem);
-            
-            // Si este nodo es el coordinador, agregar el archivo a la tabla de archivos compartidos
-            if (name.equals(coordinator)) {
-                File file = new File("storage/" + catalogItem);
-                if (file.exists()) {
-                    SharedFile sharedFile = new SharedFile(catalogItem, file.length(), name);
-                    addSharedFile(sharedFile);
-                }
+@Override
+public void registerCatalog(String catalogItem) throws RemoteException {
+    // Check if the file is already in the catalog to avoid duplicates
+    if (!catalog.contains(catalogItem)) {
+        catalog.add(catalogItem);
+        System.out.println("Archivo registrado en el catálogo: " + catalogItem);
+        
+        // If this node is the coordinator, add the file to the shared files table
+        if (name.equals(coordinator)) {
+            File file = new File("storage/" + catalogItem);
+            if (file.exists()) {
+                SharedFile sharedFile = new SharedFile(catalogItem, file.length(), name);
+                addSharedFile(sharedFile);
+                System.out.println("Archivo añadido a la tabla de archivos compartidos: " + catalogItem);
             } else {
-                // Si no somos el coordinador, notificar al coordinador sobre el nuevo archivo
-                try {
-                    PeerInterface coordinatorPeer = (PeerInterface) app.getRegistry().lookup(coordinator);
-                    coordinatorPeer.notifyNewFile(catalogItem, name);
-                } catch (Exception e) {
-                    System.err.println("Error al notificar al coordinador sobre el nuevo archivo: " + e.getMessage());
-                    e.printStackTrace();
-                }
+                System.out.println("Archivo no encontrado en storage: " + catalogItem);
             }
         } else {
-            System.out.println("El archivo ya existe en el catálogo: " + catalogItem);
+            // If we are not the coordinator, notify the coordinator about the new file
+            try {
+                PeerInterface coordinatorPeer = (PeerInterface) app.getRegistry().lookup(coordinator);
+                coordinatorPeer.notifyNewFile(catalogItem, name);
+                System.out.println("Coordinador notificado sobre nuevo archivo: " + catalogItem);
+            } catch (Exception e) {
+                System.err.println("Error al notificar al coordinador sobre el nuevo archivo: " + e.getMessage());
+                e.printStackTrace();
+            }
         }
+    } else {
+        System.out.println("El archivo ya existe en el catálogo: " + catalogItem);
     }
+}
 
     /**
      * Método para ser notificado de un nuevo archivo por otro peer
@@ -706,4 +746,48 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
     public int getId() throws RemoteException {
         return id;
     }
+    
+    private void scanStorageDirectory() {
+    File storageDir = new File("storage");
+    if (storageDir.exists() && storageDir.isDirectory()) {
+        File[] files = storageDir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile()) {
+                    try {
+                        // Register the file in the catalog
+                        registerCatalog(file.getName());
+                        System.out.println("Archivo encontrado en storage y registrado: " + file.getName());
+                    } catch (RemoteException e) {
+                        System.err.println("Error al registrar archivo existente: " + e.getMessage());
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
+}
+    
+    // Add this method to RMIPeer.java
+private void loadExistingFilesIntoCatalog() {
+    File storageDir = new File("storage");
+    if (storageDir.exists() && storageDir.isDirectory()) {
+        File[] files = storageDir.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile()) {
+                    try {
+                        // Only add files that aren't already in the catalog
+                        if (!catalog.contains(file.getName())) {
+                            registerCatalog(file.getName());
+                        }
+                    } catch (RemoteException e) {
+                        System.err.println("Error al registrar archivo existente: " + e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+}
+    
 }
