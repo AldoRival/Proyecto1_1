@@ -13,6 +13,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.rmi.registry.LocateRegistry;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import javax.swing.table.DefaultTableModel;
@@ -72,36 +73,45 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
     private List<SharedFile> sharedFiles;
 
    // In RMIPeer.java, update the constructor to call scanStorageDirectory
-public RMIPeer(String name, int id, RMIApp app) throws RemoteException {
-    super();
-    this.name = name;
-    this.id = id;
-    this.catalog = new ArrayList<>();
-    this.coordinator = name; // Inicialmente, cada peer es su propio coordinador
-    this.electionInProgress = false;
-    this.foundGreater = false;
-    this.peers = new ArrayList<>();
-    this.app = app;
-    this.fileServerRunning = false;
-    this.sharedFiles = new ArrayList<>();
+    public RMIPeer(String name, int id, RMIApp app) throws RemoteException {
+        super();
+        this.name = name;
+        this.id = id;
+        this.catalog = new ArrayList<>();
+        this.coordinator = name; // Inicialmente, cada peer es su propio coordinador
+        this.electionInProgress = false;
+        this.foundGreater = false;
+        this.peers = new ArrayList<>();
+        this.app = app;
+        this.fileServerRunning = false;
+        this.sharedFiles = new ArrayList<>();
 
-    // Inicializar la tabla de archivos compartidos
-    initSharedFilesTable();
+        // Inicializar la tabla de archivos compartidos
+        initSharedFilesTable();
 
-    // Asegurar que la carpeta 'storage' exista
-    ensureStorageDirectoryExists();
-    
-    // Escanear directorio de storage para registrar archivos existentes
-    scanStorageDirectory();
-    
-    // Iniciar el servidor de archivos
-    startFileServer();
-    
-    ensureStorageDirectoryExists();
-    
-    loadExistingFilesIntoCatalog();  // Load existing files into catalog
-    
-}
+        // Asegurar que la carpeta 'storage' exista
+        ensureStorageDirectoryExists();
+
+        // Escaneo del directorio de storage para registrar archivos existentes
+        scanStorageDirectory();
+
+        // Iniciar el servidor de archivos
+        startFileServer();
+
+        ensureStorageDirectoryExists();
+
+        loadExistingFilesIntoCatalog();  // Cargar archivos existentes en el catálogo
+
+        // Registrar el peer en el Registry
+        try {
+            Registry registry = LocateRegistry.getRegistry(1099);
+            registry.rebind(name, this);
+            System.out.println("Peer registrado en el Registry: " + name); // Mensaje de depuración
+        } catch (RemoteException e) {
+            System.err.println("Error al registrar el peer en el Registry: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 
     private void initSharedFilesTable() {
         // Crear el modelo de tabla con las columnas necesarias
@@ -485,24 +495,28 @@ public void registerCatalog(String catalogItem) throws RemoteException {
     /**
      * Método para ser notificado de un nuevo archivo por otro peer
      */
-    @Override
-    public void notifyNewFile(String fileName, String peerName) throws RemoteException {
-        if (name.equals(coordinator)) {
-            // Intentar obtener información sobre el tamaño del archivo
-            long fileSize = 0;
-            try {
-                // Intentar obtener la referencia al peer para acceder a su archivo
-                PeerInterface peer = (PeerInterface) app.getRegistry().lookup(peerName);
-                fileSize = peer.getFileSize(fileName);
-            } catch (Exception e) {
-                System.err.println("Error al obtener tamaño del archivo: " + e.getMessage());
-                fileSize = 0; // Si no podemos obtener el tamaño, asumimos 0
-            }
-            
-            SharedFile sharedFile = new SharedFile(fileName, fileSize, peerName);
-            addSharedFile(sharedFile);
+@Override
+public void notifyNewFile(String fileName, String peerName) throws RemoteException {
+    if (name.equals(coordinator)) {
+        // Intentar obtener información sobre el tamaño del archivo
+        long fileSize = 0;
+        try {
+            // Intentar obtener la referencia al peer para acceder a su archivo
+            PeerInterface peer = (PeerInterface) app.getRegistry().lookup(peerName);
+            fileSize = peer.getFileSize(fileName);
+        } catch (Exception e) {
+            System.err.println("Error al obtener tamaño del archivo: " + e.getMessage());
+            fileSize = 0; // Si no podemos obtener el tamaño, asumimos 0
         }
+
+        final SharedFile sharedFile = new SharedFile(fileName, fileSize, peerName);
+
+        // Asegúrate de que la actualización de la GUI se realice en el EDT
+        SwingUtilities.invokeLater(() -> {
+            addSharedFile(sharedFile);
+        });
     }
+}
 
     /**
      * Método para obtener el tamaño de un archivo
@@ -789,5 +803,29 @@ private void loadExistingFilesIntoCatalog() {
         }
     }
 }
+
+public void sendMessageToAllPeers(String message) {
+    for (String peerName : peers) {
+        try {
+            PeerInterface peer = (PeerInterface) app.getRegistry().lookup(peerName);
+            peer.sendChatMessage(name, message);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+    }
+}
+
+public void sendChatMessage(String nodeID, String message) throws RemoteException {
+    SwingUtilities.invokeLater(() -> {
+        if (app.getChatPanel() != null) {
+            app.getChatPanel().getChatArea().append(nodeID + ": " + message + "\n");
+        }
+    });
+}
+
+
+
+
+
     
 }

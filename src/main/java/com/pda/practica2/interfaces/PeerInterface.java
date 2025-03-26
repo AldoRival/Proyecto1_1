@@ -5,6 +5,7 @@ import java.rmi.Remote;
 import java.rmi.RemoteException;
 import java.util.List;
 
+
 public interface PeerInterface extends Remote {
 
     // Método para enviar mensajes entre peers
@@ -66,4 +67,6 @@ public interface PeerInterface extends Remote {
 
     // Método para obtener el ID del peer
     int getId() throws RemoteException;
+    
+    void sendChatMessage(String nodeID, String message) throws RemoteException;
 }

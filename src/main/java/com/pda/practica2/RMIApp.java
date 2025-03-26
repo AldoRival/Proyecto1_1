@@ -1,6 +1,8 @@
 package com.pda.practica2;
 
 import com.pda.practica2.interfaces.PeerInterface;
+import com.pda.practica2.model.ChatPanel;
+import com.pda.practica2.model.PeersPanel;
 import com.pda.practica2.model.RMIPeer;
 import javax.swing.*;
 import java.awt.*;
@@ -34,131 +36,152 @@ public class RMIApp extends JFrame {
     private JScrollPane sharedFilesScrollPane; // ScrollPane para la tabla del coordinador
     private boolean isCoordinator = false; // Indica si este peer es el coordinador
     private JTable resultsTable;
+    private PeersPanel peersPanel;
+    private JTabbedPane tabbedPane; // Declaración de tabbedPane
+    private JScrollPane resultsScrollPane; // Referencia al JScrollPane de resultados
+    private JPanel resultsPanel; // Add this declaration
+    private ChatPanel chatPanel; // Declarar la variable de instancia
+
     
     
     
-    
 
-    public RMIApp(String nodeID) throws RemoteException {
-        super("Intercambio de Archivos P2P");
-        setSize(1000, 700); // Aumentamos el tamaño para acomodar las nuevas funcionalidades
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout());
+public RMIApp(String nodeID) throws RemoteException {
+    super("Intercambio de Archivos P2P");
+    setSize(1000, 700);
+    setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    setLayout(new BorderLayout());
 
-        // Panel principal con divisiones
-        JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
-        mainSplitPane.setResizeWeight(0.6); // La parte superior ocupa 60% del espacio
-        
-        // Panel superior con búsqueda y resultados
-        JPanel topPanel = new JPanel(new BorderLayout());
-        
-        // Campo de búsqueda y botones
-        searchField = new JTextField(20);
-        searchButton = new JButton("Buscar");
-        searchButton.addActionListener(e -> searchFiles(searchField.getText()));
+    // Inicializar el JScrollPane de resultados
+    resultsScrollPane = new JScrollPane();
 
-        uploadButton = new JButton("Subir Archivo");
-        uploadButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                uploadFile();
-            }
-        });
+    // Inicialización de tabbedPane
+    tabbedPane = new JTabbedPane();
 
-        JPanel searchPanel = new JPanel();
-        searchPanel.add(new JLabel("Buscar:"));
-        searchPanel.add(searchField);
-        searchPanel.add(searchButton);
-        searchPanel.add(uploadButton);
-        topPanel.add(searchPanel, BorderLayout.NORTH);
+    // Panel principal con divisiones
+    JSplitPane mainSplitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
+    mainSplitPane.setResizeWeight(0.6);
 
-        // Panel de resultados de búsqueda con capacidad de descarga
-        JPanel resultsPanel = new JPanel(new BorderLayout());
-        textAreaSearchResults = new JTextArea();
-        JScrollPane scrollPaneSearchResults = new JScrollPane(textAreaSearchResults);
-        
-        // Agregar botón de descarga para los resultados de búsqueda
-        JButton downloadSelectedButton = new JButton("Descargar seleccionados");
-        downloadSelectedButton.addActionListener(e -> downloadSelectedFile());
-        
-        resultsPanel.add(scrollPaneSearchResults, BorderLayout.CENTER);
-        resultsPanel.add(downloadSelectedButton, BorderLayout.SOUTH);
-        
-        topPanel.add(resultsPanel, BorderLayout.CENTER);
-        
-        // Label para mostrar el coordinador
-        jLabelCoor = new JLabel("Coordinador: ");
-        topPanel.add(jLabelCoor, BorderLayout.WEST);
-        
-        mainSplitPane.setTopComponent(topPanel);
-        
-        // Panel inferior con pestañas
+    // Panel superior con búsqueda y resultados
+    JPanel topPanel = new JPanel(new BorderLayout());
+
+    // Campo de búsqueda y botones
+    searchField = new JTextField(20);
+    searchButton = new JButton("Buscar");
+    searchButton.addActionListener(e -> searchFiles(searchField.getText()));
+
+    uploadButton = new JButton("Subir Archivo");
+    uploadButton.addActionListener(e -> uploadFile());
+
+    JPanel searchPanel = new JPanel();
+    searchPanel.add(new JLabel("Buscar:"));
+    searchPanel.add(searchField);
+    searchPanel.add(searchButton);
+    searchPanel.add(uploadButton);
+    topPanel.add(searchPanel, BorderLayout.NORTH);
+
+    // Panel de resultados de búsqueda con capacidad de descarga
+    resultsPanel = new JPanel(new BorderLayout());
+    textAreaSearchResults = new JTextArea();
+    resultsScrollPane = new JScrollPane(textAreaSearchResults);
+
+    // Agregar botón de descarga para los resultados de búsqueda
+    JButton downloadSelectedButton = new JButton("Descargar seleccionados");
+    downloadSelectedButton.addActionListener(e -> downloadSelectedFile());
+
+    resultsPanel.add(resultsScrollPane, BorderLayout.CENTER);
+    resultsPanel.add(downloadSelectedButton, BorderLayout.SOUTH);
+
+    topPanel.add(resultsPanel, BorderLayout.CENTER);
+
+    // Label para mostrar el coordinador
+    jLabelCoor = new JLabel("Coordinador: ");
+    topPanel.add(jLabelCoor, BorderLayout.WEST);
+
+    mainSplitPane.setTopComponent(topPanel);
+
+    // Panel inferior con pestañas
         JTabbedPane tabbedPane = new JTabbedPane();
         
-        // Panel de catálogos
-        JPanel catalogsPanel = new JPanel(new GridLayout(1, 2));
-        
-        catalogMP3 = new JTextArea();
-        JScrollPane scrollPaneCatalogMP3 = new JScrollPane(catalogMP3);
-        JPanel mp3Panel = new JPanel(new BorderLayout());
-        mp3Panel.add(new JLabel("Catálogo MP3"), BorderLayout.NORTH);
-        mp3Panel.add(scrollPaneCatalogMP3, BorderLayout.CENTER);
-        
-        catalogMP4 = new JTextArea();
-        JScrollPane scrollPaneCatalogMP4 = new JScrollPane(catalogMP4);
-        JPanel mp4Panel = new JPanel(new BorderLayout());
-        mp4Panel.add(new JLabel("Catálogo MP4"), BorderLayout.NORTH);
-        mp4Panel.add(scrollPaneCatalogMP4, BorderLayout.CENTER);
-        
-        catalogsPanel.add(mp3Panel);
-        catalogsPanel.add(mp4Panel);
-        
-        tabbedPane.addTab("Catálogos", catalogsPanel);
-        
-        // Panel de mensajes
-        jTextAreaMessages = new JTextArea();
-        JScrollPane scrollPaneMessages = new JScrollPane(jTextAreaMessages);
-        tabbedPane.addTab("Mensajes", scrollPaneMessages);
-        
-        // Panel del coordinador (se mostrará cuando este peer sea el coordinador)
-        coordinatorPanel = new JPanel(new BorderLayout());
-        coordinatorPanel.add(new JLabel("Archivos compartidos en la red (solo visible para el coordinador)"), 
-                            BorderLayout.NORTH);
-        tabbedPane.addTab("Panel del Coordinador", coordinatorPanel);
-        
-        // Área para visualizar/reproducir archivos
-        filePreviewPanel = new JPanel(new BorderLayout());
-        filePreviewPanel.add(new JLabel("Vista previa de archivos"), BorderLayout.NORTH);
-        tabbedPane.addTab("Vista previa", filePreviewPanel);
-        
-        mainSplitPane.setBottomComponent(tabbedPane);
-        
+    // Panel de catálogos
+    JPanel catalogsPanel = new JPanel(new GridLayout(1, 2));
+
+    catalogMP3 = new JTextArea();
+    JScrollPane scrollPaneCatalogMP3 = new JScrollPane(catalogMP3);
+    JPanel mp3Panel = new JPanel(new BorderLayout());
+    mp3Panel.add(new JLabel("Catálogo MP3"), BorderLayout.NORTH);
+    mp3Panel.add(scrollPaneCatalogMP3, BorderLayout.CENTER);
+
+    catalogMP4 = new JTextArea();
+    JScrollPane scrollPaneCatalogMP4 = new JScrollPane(catalogMP4);
+    JPanel mp4Panel = new JPanel(new BorderLayout());
+    mp4Panel.add(new JLabel("Catálogo MP4"), BorderLayout.NORTH);
+    mp4Panel.add(scrollPaneCatalogMP4, BorderLayout.CENTER);
+
+    catalogsPanel.add(mp3Panel);
+    catalogsPanel.add(mp4Panel);
+
+    tabbedPane.addTab("Catálogos", catalogsPanel);
+
+    // Panel de mensajes
+    jTextAreaMessages = new JTextArea();
+    JScrollPane scrollPaneMessages = new JScrollPane(jTextAreaMessages);
+    tabbedPane.addTab("Mensajes", scrollPaneMessages);
+
+    // Panel del coordinador (se mostrará cuando este peer sea el coordinador)
+    coordinatorPanel = new JPanel(new BorderLayout());
+    coordinatorPanel.add(new JLabel("Archivos compartidos en la red (solo visible para el coordinador)"),
+                        BorderLayout.NORTH);
+    tabbedPane.addTab("Panel del Coordinador", coordinatorPanel);
+
+    // Crear el panel de peers
+    peersPanel = new PeersPanel();
+
+    // Agregar el panel de peers a la pestaña de "Peers Conectados"
+    tabbedPane.addTab("Peers Conectados", peersPanel);
+
         // Agregar el panel principal al frame
         add(mainSplitPane, BorderLayout.CENTER);
         
-        // Iniciar el registro RMI
-        try {
-            registry = LocateRegistry.createRegistry(1099);
-            peer = new RMIPeer(nodeID, 1, this);
-            registry.rebind(nodeID, peer);
-            updatePeersList();
-            updateCatalogs();
-            
-            // Obtener la referencia a la tabla de archivos compartidos del peer
-            sharedFilesScrollPane = peer.getSharedFilesScrollPane();
-            coordinatorPanel.add(sharedFilesScrollPane, BorderLayout.CENTER);
-        } catch (RemoteException ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Error al iniciar el servicio RMI: " + ex.getMessage(), 
-                                         "Error", JOptionPane.ERROR_MESSAGE);
-        }
-        
-        if (peer.getSharedFilesScrollPane() != null) {
+    // Iniciar el registro RMI
+
+    try {
+        registry = LocateRegistry.createRegistry(1099);
+        peer = new RMIPeer(nodeID, 1, this); // Asegúrate de que peer se inicializa aquí
+        registry.rebind(nodeID, peer);
+        System.out.println("Peer registrado en el Registry: " + nodeID);
+
+        // Actualizar la lista de peers después de registrar el peer local
+        updatePeersList();
+        updateCatalogs();
+
+        // Incluir el peer local en la lista de peers
+        SwingUtilities.invokeLater(() -> {
+            peersPanel.updatePeers(new String[]{nodeID + ":localhost"});
+        });
+
+    } catch (RemoteException e) {
+        e.printStackTrace();
+        JOptionPane.showMessageDialog(this, "Error al iniciar el servicio RMI: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+    }
+
+    // Crear y agregar el panel de chat después de inicializar peer
+    ChatPanel chatPanel = new ChatPanel(peer);
+    tabbedPane.addTab("Chat", chatPanel);
+
+    mainSplitPane.setBottomComponent(tabbedPane);
+
+    // Agregar el panel principal al frame
+    add(mainSplitPane, BorderLayout.CENTER);
+
+    if (peer.getSharedFilesScrollPane() != null) {
         sharedFilesScrollPane = peer.getSharedFilesScrollPane();
         coordinatorPanel.add(sharedFilesScrollPane, BorderLayout.CENTER);
-}
-        
     }
+        
+}
+
+
 
     public Registry getRegistry() {
         return registry;
@@ -288,93 +311,94 @@ private void updateCatalogs() {
     }
 }
 
-    private void updatePeersList() {
+    public void updatePeersList() {
         try {
-            StringBuilder sb = new StringBuilder("Peers conectados:\n");
-            String[] listPeers = registry.list();
-            for (String peerName : listPeers) {
-                sb.append(peerName).append(" - Online\n");
-            }
-            textAreaSearchResults.setText(sb.toString());
+            String[] peers = registry.list();
+            System.out.println("Actualizando lista de peers: " + Arrays.toString(peers));
+
+            // Asegúrate de que la actualización de la GUI se realice en el EDT
+            SwingUtilities.invokeLater(() -> {
+                peersPanel.updatePeers(peers);
+            });
         } catch (RemoteException ex) {
             ex.printStackTrace();
         }
     }
 
+
+
 // In RMIApp.java, modify the searchFiles method
-public void searchFiles(String query) {
-    if (query == null || query.trim().isEmpty()) {
-        JOptionPane.showMessageDialog(this,
-            "Por favor, ingresa un término de búsqueda",
-            "Búsqueda vacía",
-            JOptionPane.WARNING_MESSAGE);
-        return;
-    }
-
-    try {
-        String[] resultsArray = peer.searchFiles(query);
-
-        // Crear un nuevo modelo de tabla para los resultados de búsqueda
-        DefaultTableModel model = new DefaultTableModel() {
-            @Override
-            public Class<?> getColumnClass(int columnIndex) {
-                return columnIndex == 0 ? Boolean.class : String.class;
-            }
-
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return column == 0; // Solo la columna de checkbox es editable
-            }
-        };
-
-        // Definir las columnas
-        model.addColumn("Seleccionar");
-        model.addColumn("Nombre");
-        model.addColumn("Tamaño");
-        model.addColumn("Subido por");
-        model.addColumn("Fecha");
-
-        // Añadir los resultados al modelo
-        for (String result : resultsArray) {
-            String[] parts = result.split("\\|");
-            if (parts.length >= 3) {
-                String fileName = parts[0].trim();
-                String fileSize = parts[1].trim();
-                String uploader = parts[2].trim();
-                String date = parts.length > 3 ? parts[3].trim() : "";
-
-                model.addRow(new Object[]{false, fileName, fileSize, uploader, date});
-            }
+ public void searchFiles(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "Por favor, ingresa un término de búsqueda",
+                "Búsqueda vacía",
+                JOptionPane.WARNING_MESSAGE);
+            return;
         }
 
-        // Crear una nueva tabla y reemplazar el área de texto
-        resultsTable = new JTable(model);
-        resultsTable.getColumnModel().getColumn(0).setMaxWidth(80);
-        resultsTable.getColumnModel().getColumn(1).setPreferredWidth(200);
-        resultsTable.getColumnModel().getColumn(2).setPreferredWidth(80);
-        resultsTable.getColumnModel().getColumn(3).setPreferredWidth(100);
-        resultsTable.getColumnModel().getColumn(4).setPreferredWidth(150);
+        try {
+            String[] resultsArray = peer.searchFiles(query);
 
-        // Reemplazar el scrollPaneSearchResults en el panel resultsPanel
-        JScrollPane oldScrollPane = (JScrollPane) textAreaSearchResults.getParent().getParent();
-        JPanel parentPanel = (JPanel) oldScrollPane.getParent();
-        parentPanel.remove(oldScrollPane);
-        JScrollPane scrollPane = new JScrollPane(resultsTable);
-        parentPanel.add(scrollPane, BorderLayout.CENTER);
+            // Crear un nuevo modelo de tabla para los resultados de búsqueda
+            DefaultTableModel model = new DefaultTableModel() {
+                @Override
+                public Class<?> getColumnClass(int columnIndex) {
+                    return columnIndex == 0 ? Boolean.class : String.class;
+                }
 
-        // Actualizar la referencia a la tabla de resultados
-        this.resultsTable = resultsTable;
-        parentPanel.revalidate();
-        parentPanel.repaint();
+                @Override
+                public boolean isCellEditable(int row, int column) {
+                    return column == 0; // Solo la columna de checkbox es editable
+                }
+            };
 
-    } catch (RemoteException e) {
-        e.printStackTrace();
-        JOptionPane.showMessageDialog(this,
-            "Error al buscar archivos: " + e.getMessage(),
-            "Error",
-            JOptionPane.ERROR_MESSAGE);
+            // Definir las columnas
+            model.addColumn("Seleccionar");
+            model.addColumn("Nombre");
+            model.addColumn("Tamaño");
+            model.addColumn("Subido por");
+            model.addColumn("Fecha");
+
+            // Añadir los resultados al modelo
+            for (String result : resultsArray) {
+                String[] parts = result.split("\\|");
+                if (parts.length >= 3) {
+                    String fileName = parts[0].trim();
+                    String fileSize = parts[1].trim();
+                    String uploader = parts[2].trim();
+                    String date = parts.length > 3 ? parts[3].trim() : "";
+
+                    model.addRow(new Object[]{false, fileName, fileSize, uploader, date});
+                }
+            }
+
+            // Crear una nueva tabla y reemplazar el área de texto
+            resultsTable = new JTable(model);
+            resultsTable.getColumnModel().getColumn(0).setMaxWidth(80);
+            resultsTable.getColumnModel().getColumn(1).setPreferredWidth(200);
+            resultsTable.getColumnModel().getColumn(2).setPreferredWidth(80);
+            resultsTable.getColumnModel().getColumn(3).setPreferredWidth(100);
+            resultsTable.getColumnModel().getColumn(4).setPreferredWidth(150);
+
+            // Actualizar el JScrollPane con la nueva tabla
+            resultsScrollPane.setViewportView(resultsTable);
+
+            // Actualizar la referencia a la tabla de resultados
+            this.resultsTable = resultsTable;
+            resultsScrollPane.revalidate();
+            resultsScrollPane.repaint();;
+
+        } catch (RemoteException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this,
+                "Error al buscar archivos: " + e.getMessage(),
+                "Error",
+                JOptionPane.ERROR_MESSAGE);
+        }
     }
-}
+
+
 
 
     public void updateCoordinator(String coordinator) {
@@ -414,6 +438,11 @@ private void refreshSharedFilesTable() {
         coordinatorPanel.repaint();
     }
 }
+
+
+    public ChatPanel getChatPanel() {
+        return chatPanel; // Ahora chatPanel está definido y accesible
+    }
     
     
 

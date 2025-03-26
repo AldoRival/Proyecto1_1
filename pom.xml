@@ -7,7 +7,7 @@
     <groupId>com.pda</groupId>
     <artifactId>Practica2</artifactId>
     <version>1.0-SNAPSHOT</version>
-    <packaging>war</packaging>
+    <packaging>jar</packaging> <!-- Cambiado a JAR -->
 
     <name>Practica2</name>
 
@@ -56,16 +56,21 @@
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-war-plugin</artifactId>
-                <version>3.3.2</version> <!-- Actualizado a 3.3.2 -->
+                <artifactId>maven-jar-plugin</artifactId> <!-- Cambiado a maven-jar-plugin -->
+                <version>3.2.0</version>
                 <configuration>
-                    <failOnMissingWebXml>false</failOnMissingWebXml>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <mainClass>com.pda.practica2.RMIApp</mainClass> <!-- Asegúrate de que esta sea tu clase principal -->
+                        </manifest>
+                    </archive>
                 </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.2.0</version> <!-- Actualizado a 3.2.0 -->
+                <version>3.2.0</version>
                 <executions>
                     <execution>
                         <phase>validate</phase>
