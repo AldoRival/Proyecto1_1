@@ -68,9 +68,56 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
             return uploadDate;
         }
     }
+    
+        public void connectToPeers() {
+        try {
+            // Obtener el registro RMI
+            Registry registry = LocateRegistry.getRegistry("localhost", 1099);
+            
+            // Listar todos los peers registrados
+            String[] peerNames = registry.list();
+            
+            for (String peerName : peerNames) {
+                try {
+                    // No conectarse a sí mismo
+                    if (!peerName.equals(this.getName())) {
+                        // Buscar la interfaz del peer remoto
+                        PeerInterface remotePeer = (PeerInterface) registry.lookup(peerName);
+                        
+                        // Verificar si ya no está conectado
+                        if (!connectedPeers.contains(remotePeer)) {
+                            // Realizar la conexión
+                            remotePeer.connect(this);
+                            connectedPeers.add(remotePeer);
+                            
+                            // Opcional: Notificar sobre la conexión
+                            System.out.println("Conectado a peer: " + peerName);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error conectando con peer " + peerName + ": " + e.getMessage());
+                }
+            }
+        } catch (RemoteException e) {
+            e.printStackTrace();
+        }
+    }
+        
+       // Implementación del método connect en la interfaz
+    @Override
+    public void connect(PeerInterface peer) throws RemoteException {
+        // Lógica para establecer conexión
+        if (!connectedPeers.contains(peer)) {
+            connectedPeers.add(peer);
+            System.out.println("Peer conectado: " + peer.getName());
+        }
+    }
+    
 
     // Lista de archivos compartidos
     private List<SharedFile> sharedFiles;
+    
+    private List<PeerInterface> connectedPeers = new ArrayList<>();
 
    // In RMIPeer.java, update the constructor to call scanStorageDirectory
     public RMIPeer(String name, int id, RMIApp app) throws RemoteException {
@@ -112,6 +159,9 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
             e.printStackTrace();
         }
     }
+    
+   
+    
 
     private void initSharedFilesTable() {
         // Crear el modelo de tabla con las columnas necesarias
@@ -158,37 +208,45 @@ public class RMIPeer extends UnicastRemoteObject implements PeerInterface {
     /**
      * Inicia un servidor en un hilo separado para recibir archivos
      */
-    public void startFileServer() {
-        if (fileServerRunning) {
-            System.out.println("El servidor de archivos ya está en ejecución");
+public void startFileServer() {
+    if (fileServerRunning) {
+        System.out.println("El servidor de archivos ya está en ejecución");
+        return;
+    }
+
+    new Thread(() -> {
+        int port = 12345;
+        while (port < 65535) {
+            try {
+                fileServerSocket = new ServerSocket(port);
+                fileServerRunning = true;
+                System.out.println("Servidor de archivos iniciado en el puerto " + port);
+                break;
+            } catch (IOException e) {
+                port++;
+            }
+        }
+        if (!fileServerRunning) {
+            System.err.println("No se pudo encontrar un puerto disponible para el servidor de archivos");
             return;
         }
-        
-        new Thread(() -> {
+        while (fileServerRunning) {
             try {
-                fileServerSocket = new ServerSocket(12345);
-                fileServerRunning = true;
-                System.out.println("Servidor de archivos iniciado en el puerto 12345");
+                Socket clientSocket = fileServerSocket.accept();
+                System.out.println("Nueva conexión recibida desde: " + clientSocket.getInetAddress());
                 
-                while (fileServerRunning) {
-                    try {
-                        Socket clientSocket = fileServerSocket.accept();
-                        System.out.println("Nueva conexión recibida desde: " + clientSocket.getInetAddress());
-                        
-                        // Manejar la transferencia en un hilo separado
-                        new Thread(() -> handleFileTransfer(clientSocket)).start();
-                    } catch (IOException e) {
-                        if (fileServerRunning) {
-                            System.err.println("Error al aceptar conexión: " + e.getMessage());
-                        }
-                    }
-                }
+                // Manejar la transferencia en un hilo separado
+                new Thread(() -> handleFileTransfer(clientSocket)).start();
             } catch (IOException e) {
-                System.err.println("Error al iniciar el servidor de archivos: " + e.getMessage());
-                e.printStackTrace();
+                
+                if (fileServerRunning) {
+                    System.err.println("Error al aceptar conexión: " + e.getMessage());
+                }
             }
-        }).start();
-    }
+        }
+    }).start();
+}
+
     
     /**
      * Detiene el servidor de archivos
@@ -295,7 +353,7 @@ private void handleFileTransfer(Socket socket) {
         this.peers.addAll(Arrays.asList(peers));
         System.out.println("Lista de peers actualizada: " + this.peers);
     }
-
+    
 @Override
 public String[] searchFiles(String query) throws RemoteException {
     System.out.println("Buscando archivos con query: '" + query + "'");
@@ -823,9 +881,13 @@ public void sendChatMessage(String nodeID, String message) throws RemoteExceptio
     });
 }
 
+    // Método para obtener la lista de peers conectados
+    public List<PeerInterface> getConnectedPeers() {
+        return connectedPeers;
+    }
 
 
 
-
+    
     
 }

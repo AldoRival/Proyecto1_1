@@ -69,4 +69,7 @@ public interface PeerInterface extends Remote {
     int getId() throws RemoteException;
     
     void sendChatMessage(String nodeID, String message) throws RemoteException;
+    
+    void connect(PeerInterface peer) throws RemoteException;
+    
 }
